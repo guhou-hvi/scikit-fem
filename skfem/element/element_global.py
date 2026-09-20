@@ -147,10 +147,14 @@ class ElementGlobal(Element):
 
         N = len(self._pbasis[()])
         V = np.zeros((len(tind), N, N))
-        w = {
-            'v': np.array([mesh.p[:, mesh.t[itr, tind]]
-                           for itr in range(mesh.t.shape[0])]),
-        }
+        if self.dim == 1:
+            # Periodic topology need not index the physical geometry nodes.
+            vertices = mesh.mapping().F(self.refdom.p, tind=tind)
+            vertices = vertices.transpose(2, 0, 1)
+        else:
+            vertices = np.array([mesh.p[:, mesh.t[itr, tind]]
+                                 for itr in range(mesh.t.shape[0])])
+        w = {'v': vertices}
         if mesh.p.shape[0] == 2:
             w['e'] = np.array([
                 .5 * (w['v'][itr] + w['v'][(itr + 1) % mesh.t.shape[0]])
