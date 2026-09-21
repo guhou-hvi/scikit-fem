@@ -155,10 +155,7 @@ class ElementGlobal(Element):
             vertices = np.array([mesh.p[:, mesh.t[itr, tind]]
                                  for itr in range(mesh.t.shape[0])])
         w = {'v': vertices}
-        # Keep edge data for existing ordinary-mesh subclasses.
-        # Elements without facet DOFs on DG geometry need no FacetBasis.
-        if (mesh.p.shape[0] == 2
-                and (self.facet_dofs > 0 or mesh.bndelem is not None)):
+        if mesh.p.shape[0] == 2:
             w['e'] = np.array([
                 .5 * (w['v'][itr] + w['v'][(itr + 1) % mesh.t.shape[0]])
                 for itr in range(mesh.t.shape[0])
@@ -173,19 +170,33 @@ class ElementGlobal(Element):
                                         -w['n'][itr, 0, :]])
                 w['n'][itr] /= np.linalg.norm(w['n'][itr], axis=0)
 
-            # swap
-            from skfem.assembly import FacetBasis
-            fb = FacetBasis(mesh, mesh.elem(), intorder=0)
-            ix = np.isin(mesh.t2f, mesh.boundary_facets())
-            sortix = np.argsort(mesh.t2f[ix])
-            norms1 = np.vstack((w['n'][:, 0, :][ix][sortix],
-                                w['n'][:, 1, :][ix][sortix]))
-            norms2 = fb.normals[:, :, 0]
-            signs = np.diag(norms1.T @ norms2)
-            signs1 = signs.copy()
-            signs1[sortix] = signs
-            w['n'][:, 0, :][ix] *= signs1
-            w['n'][:, 1, :][ix] *= signs1
+            # Evaluate boundary normals directly in the adjacent cell.
+            # Facet geometry may use different node indices on a DG mesh.
+            ix = np.isin(mesh.t2f[:, tind], mesh.boundary_facets())
+            if np.any(ix):
+                from skfem.quadrature import get_quadrature
+
+                sortix = np.argsort(mesh.t2f[:, tind][ix])
+                find = mesh.t2f[:, tind][ix][sortix]
+                cells = mesh.f2t[0, find]
+                local = np.array([
+                    np.argmax(mesh.t[:, cells] == nodes, axis=0)
+                    for nodes in mesh.facets[:, find]
+                ])
+                # Preserve the first facet quadrature point and endpoint
+                # order, including the normal projection on curved cells.
+                s = get_quadrature(mesh.brefdom, 0)[0][0, 0]
+                X = ((1. - s) * self.refdom.p[:, local[0]]
+                     + s * self.refdom.p[:, local[1]])[:, :, None]
+                normals = mesh.mapping().normals(
+                    X, cells, find, mesh.t2f)[:, :, 0]
+                original = np.array([w['n'][:, i, :][ix][sortix]
+                                     for i in range(2)])
+                signs = np.sum(original * normals, axis=0)
+                signs1 = signs.copy()
+                signs1[sortix] = signs
+                w['n'][:, 0, :][ix] *= signs1
+                w['n'][:, 1, :][ix] *= signs1
 
         # evaluate dofs, gdof implemented in subclasses
         for itr in range(N):
