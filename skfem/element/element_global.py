@@ -147,7 +147,7 @@ class ElementGlobal(Element):
 
         N = len(self._pbasis[()])
         V = np.zeros((len(tind), N, N))
-        if self.dim == 1:
+        if self.dim in (1, 2):
             # Periodic topology need not index the physical geometry nodes.
             vertices = mesh.mapping().F(self.refdom.p, tind=tind)
             vertices = vertices.transpose(2, 0, 1)
@@ -155,7 +155,10 @@ class ElementGlobal(Element):
             vertices = np.array([mesh.p[:, mesh.t[itr, tind]]
                                  for itr in range(mesh.t.shape[0])])
         w = {'v': vertices}
-        if mesh.p.shape[0] == 2:
+        # Keep edge data for existing ordinary-mesh subclasses.
+        # Elements without facet DOFs on DG geometry need no FacetBasis.
+        if (mesh.p.shape[0] == 2
+                and (self.facet_dofs > 0 or mesh.bndelem is not None)):
             w['e'] = np.array([
                 .5 * (w['v'][itr] + w['v'][(itr + 1) % mesh.t.shape[0]])
                 for itr in range(mesh.t.shape[0])
