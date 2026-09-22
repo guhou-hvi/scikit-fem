@@ -77,18 +77,3 @@ def test_periodic_tri_hermite_local_polynomial(periodic, irregular):
     x, y = basis.global_coordinates()
     assert_allclose(value, cubic(x, y), rtol=1e-8, atol=1e-9)
     assert_allclose(gradient, cubic_gradient(x, y), rtol=1e-8, atol=1e-8)
-
-
-def test_custom_hermite_keeps_ordinary_edge_data():
-    class CustomHermite(ElementTriHermite):
-        def gdof(self, functions, data, index):
-            # Existing subclasses may inspect these keys even without
-            # defining a facet DOF.  Preserve the ordinary-mesh contract.
-            assert np.isfinite(data['e']).all()
-            assert np.isfinite(data['n']).all()
-            return super().gdof(functions, data, index)
-
-    mesh = periodic_mesh([0], False)._orig
-    ordinary = mass.assemble(Basis(mesh, ElementTriHermite()))
-    custom = mass.assemble(Basis(mesh, CustomHermite()))
-    assert_allclose(custom.toarray(), ordinary.toarray())

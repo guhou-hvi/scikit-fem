@@ -170,6 +170,20 @@ class ElementGlobal(Element):
                                         -w['n'][itr, 0, :]])
                 w['n'][itr] /= np.linalg.norm(w['n'][itr], axis=0)
 
+            if mesh.t.shape[0] == 3:
+                # Identified periodic vertices can reverse a local edge's
+                # direction. Use the first adjacent cell's endpoint ordering
+                # on both sides so that a shared normal DOF has one direction.
+                facets = mesh.t2f[:, tind]
+                cells = mesh.f2t[0, facets]
+                local = np.argmax(mesh.t2f[:, cells] == facets[None], axis=0)
+                edges = np.array(self.refdom.facets)
+                first = (mesh.t[edges[local, 0], cells]
+                         < mesh.t[edges[local, 1], cells])
+                current = (mesh.t[edges[:, 0, None], tind]
+                           < mesh.t[edges[:, 1, None], tind])
+                w['n'] *= np.where(first == current, 1., -1.)[:, None, :]
+
             # Evaluate boundary normals directly in the adjacent cell.
             # Facet geometry may use different node indices on a DG mesh.
             ix = np.isin(mesh.t2f[:, tind], mesh.boundary_facets())
